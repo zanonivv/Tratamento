@@ -67,9 +67,10 @@ def main():
                         output = BytesIO()
                         writer = pd.ExcelWriter(output, engine='xlsxwriter')
                         df.to_excel(writer, index=False, sheet_name='Dados Tratados')
-                        writer.save()
+                        writer.close()
                         processed_data = output.getvalue()
                         return processed_data
+
 
                     excel_bytes = convert_df(output_df)
                     st.download_button(
