@@ -81,11 +81,15 @@ def process_data(df, treatments, columns):
         if name_col in df.columns:
             # Higienizar os nomes
             df['Nome_Higienizado'] = df[name_col].apply(sanitize_name)
+
+            # Adicionar coluna do nome completo tratado com capitalização
+            output_df['Nome_Completo'] = df['Nome_Higienizado'].apply(format_name_capitalized)
+
             if treatments.get("Selecionar Primeiro Nome", False):
                 # Selecionar o primeiro nome
-                output_df['Nome'] = df['Nome_Higienizado'].apply(get_first_name)
+                output_df['Primeiro_Nome'] = df['Nome_Higienizado'].apply(get_first_name)
             else:
-                output_df['Nome'] = df['Nome_Higienizado']
+                output_df['Primeiro_Nome'] = df['Nome_Higienizado']
         else:
             st.error(f"A coluna '{name_col}' não está presente no arquivo.")
 
@@ -98,7 +102,7 @@ def process_data(df, treatments, columns):
 
     if output_df.empty:
         st.warning("Nenhuma coluna válida foi encontrada para processar.")
-        return pd.DataFrame(columns=['Nome', 'Telefone'])  # Retornar DataFrame vazio para evitar erros
+        return pd.DataFrame(columns=['Primeiro_Nome', 'Nome_Completo', 'Telefone'])  # Retornar DataFrame vazio para evitar erros
 
     return output_df
 
@@ -144,8 +148,17 @@ def get_first_name(name):
     name = sanitize_name(name)
     parts = name.split()
     if parts:  # Verificar se há palavras após dividir
-        return parts[0]  # Sem capitalize() para manter sem acento
+        return parts[0]
     return ''
+
+def format_name_capitalized(name):
+    """
+    Capitaliza a primeira letra de cada palavra no nome tratado.
+    """
+    if pd.isna(name) or not isinstance(name, str):
+        return ''
+    name = sanitize_name(name)
+    return ' '.join([word.capitalize() for word in name.split()])
 
 def clean_phone_number(phone_number):
     if pd.isna(phone_number):
