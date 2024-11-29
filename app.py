@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import re
 import unicodedata
+from io import BytesIO
 
 def main():
     st.title("Tratamento de Dados")
@@ -51,8 +52,7 @@ def main():
                 if st.button("Processar Dados"):
                     with st.spinner("Processando..."):
                         # Process data using the `process_data` function
-                        output_df = df.copy()
-                        process_data(output_df, treatments, columns)
+                        output_df = process_data(df, treatments, columns)
 
                     st.success("Dados processados com sucesso!")
 
@@ -60,24 +60,8 @@ def main():
                     st.subheader("Dados Tratados:")
                     st.dataframe(output_df.head())
 
-                    # Definir as colunas que serão salvas na nova planilha
-                    columns_to_save = []
-
-                    # Verificar se as colunas existem no DataFrame e adicioná-las à lista
-                    if 'Nome_Higienizado' in output_df.columns:
-                        columns_to_save.append('Nome_Higienizado')
-                    elif 'Primeiro_Nome' in output_df.columns:
-                        columns_to_save.append('Primeiro_Nome')
-
-                    if 'Telefone_Tratado' in output_df.columns:
-                        columns_to_save.append('Telefone_Tratado')
-
-                    # Se nenhuma das colunas estiver disponível, use as originais
-                    if not columns_to_save:
-                        columns_to_save = [columns.get('name_column'), columns.get('phone_column')]
-
                     # Download processed data
-                    excel_bytes = convert_df(output_df, columns_to_save)
+                    excel_bytes = convert_df_to_excel(output_df)
                     st.download_button(
                         label="Baixar arquivo Excel",
                         data=excel_bytes,
@@ -91,154 +75,80 @@ def main():
             st.error(f"Ocorreu um erro: {e}")
 
 def process_data(df, treatments, columns):
-    if treatments.get("Higienizar Nomes", False):
-        name_col = columns.get('name_column', None)
-        if name_col in df.columns:
-            df['Nome_Higienizado'] = df[name_col].apply(sanitize_name)
-        else:
-            st.error(f"A coluna '{name_col}' não está presente no arquivo.")
+    output_df = pd.DataFrame()
 
-    if treatments.get("Selecionar Primeiro Nome", False):
+    if treatments.get("Higienizar Nomes", False) or treatments.get("Selecionar Primeiro Nome", False):
         name_col = columns.get('name_column', None)
         if name_col in df.columns:
-            if 'Nome_Higienizado' in df.columns:
-                df['Primeiro_Nome'] = df['Nome_Higienizado'].apply(get_first_name)
+            # Higienizar os nomes
+            df['Nome_Higienizado'] = df[name_col].apply(sanitize_name)
+            if treatments.get("Selecionar Primeiro Nome", False):
+                # Selecionar o primeiro nome
+                output_df['Nome'] = df['Nome_Higienizado'].apply(get_first_name)
             else:
-                df['Primeiro_Nome'] = df[name_col].apply(get_first_name)
+                output_df['Nome'] = df['Nome_Higienizado']
         else:
             st.error(f"A coluna '{name_col}' não está presente no arquivo.")
 
     if treatments.get("Tratar Telefones", False):
         phone_col = columns.get('phone_column', None)
         if phone_col in df.columns:
-            df['Telefone_Tratado'] = df[phone_col].apply(clean_phone_number)
+            output_df['Telefone'] = df[phone_col].apply(clean_phone_number)
         else:
             st.error(f"A coluna '{phone_col}' não está presente no arquivo.")
 
+    return output_df
+
 def sanitize_name(name):
-    """
-    Remove emojis, a palavra 'tag', caracteres especiais e acentos do nome.
-    Extrai o nome real, mesmo que haja múltiplos '|'.
-    :param name: Nome como string.
-    :return: Nome sem emojis, 'tag', caracteres especiais e acentos.
-    """
     if pd.isna(name):
         return name
     name = str(name)  # Garantir que é uma string
 
-    # Remover emojis primeiro
+    # Remover emojis
     emoji_pattern = re.compile(
         "["
-        "\U0001F600-\U0001F64F"  # Emoticons
-        "\U0001F300-\U0001F5FF"  # Símbolos e pictogramas
-        "\U0001F680-\U0001F6FF"  # Transportes e símbolos de mapas
-        "\U0001F1E0-\U0001F1FF"  # Bandeiras
-        "\U00002700-\U000027BF"  # Símbolos diversos
-        "\U0001F900-\U0001F9FF"  # Símbolos suplementares
-        "\U00002600-\U000026FF"  # Símbolos miscelâneos
+        "\U0001F600-\U0001F64F"
+        "\U0001F300-\U0001F5FF"
+        "\U0001F680-\U0001F6FF"
+        "\U0001F1E0-\U0001F1FF"
+        "\U00002700-\U000027BF"
+        "\U0001F900-\U0001F9FF"
+        "\U00002600-\U000026FF"
         "]+", flags=re.UNICODE)
     name = emoji_pattern.sub(r'', name)
 
-    # Remover espaços no início e no fim
-    name = name.strip()
-
-    # Remover a palavra 'tag' em qualquer posição (case-insensitive)
+    # Remover a palavra 'tag' e caracteres especiais
     name = re.sub(r'\btag\b', '', name, flags=re.IGNORECASE)
-
-    # Remover o caractere '|' e tudo antes dele
-    if '|' in name:
-        name = name.split('|')[-1].strip()
-
-    # Remover caracteres especiais, mantendo letras, números e espaços
     name = re.sub(r'[^\w\s]', '', name)
 
     # Remover acentos
     name = unicodedata.normalize('NFKD', name).encode('ASCII', 'ignore').decode('ASCII')
 
-    # Remover espaços extras entre palavras
-    name = ' '.join(name.split())
-
-    return name.strip()
+    # Remover espaços extras
+    return ' '.join(name.split())
 
 def get_first_name(name):
-    """
-    Seleciona o primeiro nome da string e capitaliza apenas a primeira letra.
-    :param name: Nome completo como string.
-    :return: Primeiro nome com capitalização adequada.
-    """
     if pd.isna(name):
         return name
     name = sanitize_name(name)
-    if not name:
-        return name
-    first_name = name.split()[0]
-    first_name = first_name.capitalize()
-    return first_name
+    return name.split()[0].capitalize()
 
-def add_country_code(phone_number):
-    """
-    Adiciona o código do país (55) ao número de telefone, se necessário.
-    :param phone_number: Número de telefone como string.
-    :return: Número de telefone com o código do país.
-    """
+def clean_phone_number(phone_number):
     if pd.isna(phone_number):
         return phone_number
     phone_number = re.sub(r'\D', '', str(phone_number))
     if not phone_number.startswith('55'):
         phone_number = '55' + phone_number
+    if len(phone_number) == 12 and phone_number[4] != '9':
+        phone_number = phone_number[:4] + '9' + phone_number[4:]
     return phone_number
 
-def add_ninth_digit(phone_number):
-    """
-    Adiciona o nono dígito ao número de celular, se necessário.
-    :param phone_number: Número de telefone como string.
-    :return: Número de telefone com o nono dígito.
-    """
-    if pd.isna(phone_number):
-        return phone_number
-    phone_number = re.sub(r'\D', '', str(phone_number))
-    pattern = r'^(55)?(\d{2})(9)?(\d{4})(\d{4})$'
-    match = re.match(pattern, phone_number)
-    if match:
-        country_code = match.group(1) if match.group(1) else ''
-        area_code = match.group(2)
-        ninth_digit = '9' if not match.group(3) else match.group(3)
-        first_part = match.group(4)
-        second_part = match.group(5)
-        phone_number = f"{country_code}{area_code}{ninth_digit}{first_part}{second_part}"
-    return phone_number
-
-def clean_phone_number(phone_number):
-    """
-    Realiza o tratamento completo do número de telefone.
-    :param phone_number: Número de telefone como string.
-    :return: Número de telefone tratado.
-    """
-    if pd.isna(phone_number):
-        return phone_number
-    phone_number = add_country_code(phone_number)
-    phone_number = add_ninth_digit(phone_number)
-    return phone_number
-
-@st.cache_data
-def convert_df(df, columns_to_save):
-    # Convert DataFrame to Excel in memory with multiple sheets
-    from io import BytesIO
+def convert_df_to_excel(df):
     output = BytesIO()
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
-
-    # Salvar o DataFrame completo na primeira planilha
-    df.to_excel(writer, index=False, sheet_name='Dados Tratados')
-
-    # Criar um DataFrame com apenas as colunas especificadas
-    df_selected = df[columns_to_save]
-
-    # Salvar o DataFrame selecionado na segunda planilha
-    df_selected.to_excel(writer, index=False, sheet_name='Nome e Telefone')
-
+    df.to_excel(writer, index=False, sheet_name='Nome e Telefone')
     writer.close()
-    processed_data = output.getvalue()
-    return processed_data
+    return output.getvalue()
 
 if __name__ == '__main__':
     main()
