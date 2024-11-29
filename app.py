@@ -51,7 +51,6 @@ def main():
                 # Process data
                 if st.button("Processar Dados"):
                     with st.spinner("Processando..."):
-                        # Process data using the `process_data` function
                         output_df = process_data(df, treatments, columns)
 
                     st.success("Dados processados com sucesso!")
@@ -97,11 +96,15 @@ def process_data(df, treatments, columns):
         else:
             st.error(f"A coluna '{phone_col}' não está presente no arquivo.")
 
+    if output_df.empty:
+        st.warning("Nenhuma coluna válida foi encontrada para processar.")
+        return pd.DataFrame(columns=['Nome', 'Telefone'])  # Retornar DataFrame vazio para evitar erros
+
     return output_df
 
 def sanitize_name(name):
     if pd.isna(name):
-        return name
+        return ''
     name = str(name)  # Garantir que é uma string
 
     # Remover emojis
@@ -121,6 +124,14 @@ def sanitize_name(name):
     name = re.sub(r'\btag\b', '', name, flags=re.IGNORECASE)
     name = re.sub(r'[^\w\s]', '', name)
 
+    # Remover o caractere '|' e tudo antes dele
+    if '|' in name:
+        parts = name.split('|')
+        if len(parts) > 1:  # Verificar se há algo após '|'
+            name = parts[-1].strip()
+        else:
+            name = parts[0].strip()
+
     # Remover acentos
     name = unicodedata.normalize('NFKD', name).encode('ASCII', 'ignore').decode('ASCII')
 
@@ -128,19 +139,28 @@ def sanitize_name(name):
     return ' '.join(name.split())
 
 def get_first_name(name):
-    if pd.isna(name):
-        return name
+    if pd.isna(name) or not isinstance(name, str):
+        return ''
     name = sanitize_name(name)
-    return name.split()[0].capitalize()
+    parts = name.split()
+    if parts:  # Verificar se há palavras após dividir
+        return parts[0]  # Sem capitalize() para manter sem acento
+    return ''
 
 def clean_phone_number(phone_number):
     if pd.isna(phone_number):
-        return phone_number
-    phone_number = re.sub(r'\D', '', str(phone_number))
+        return ''
+    phone_number = re.sub(r'\D', '', str(phone_number))  # Remover tudo que não é número
+    if len(phone_number) == 0:
+        return ''  # Retornar vazio se não houver números
+
     if not phone_number.startswith('55'):
         phone_number = '55' + phone_number
+
+    # Adicionar nono dígito, se necessário
     if len(phone_number) == 12 and phone_number[4] != '9':
         phone_number = phone_number[:4] + '9' + phone_number[4:]
+
     return phone_number
 
 def convert_df_to_excel(df):
