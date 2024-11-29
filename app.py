@@ -86,8 +86,8 @@ def process_data(df, treatments, columns):
             output_df['Nome_Completo'] = df['Nome_Higienizado'].apply(format_name_capitalized)
 
             if treatments.get("Selecionar Primeiro Nome", False):
-                # Selecionar o primeiro nome
-                output_df['Primeiro_Nome'] = df['Nome_Higienizado'].apply(get_first_name)
+                # Selecionar o primeiro nome e aplicar capitalização
+                output_df['Primeiro_Nome'] = df['Nome_Higienizado'].apply(get_first_name_capitalized)
             else:
                 output_df['Primeiro_Nome'] = df['Nome_Higienizado']
         else:
@@ -142,13 +142,16 @@ def sanitize_name(name):
     # Remover espaços extras
     return ' '.join(name.split())
 
-def get_first_name(name):
+def get_first_name_capitalized(name):
+    """
+    Extrai o primeiro nome e capitaliza a primeira letra.
+    """
     if pd.isna(name) or not isinstance(name, str):
         return ''
     name = sanitize_name(name)
     parts = name.split()
     if parts:  # Verificar se há palavras após dividir
-        return parts[0]
+        return parts[0].capitalize()  # Aplica capitalização ao primeiro nome
     return ''
 
 def format_name_capitalized(name):
