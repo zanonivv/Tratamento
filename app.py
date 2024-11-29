@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import re
+import unicodedata
 
 def main():
     st.title("Tratamento de Dados")
@@ -59,20 +60,24 @@ def main():
                     st.subheader("Dados Tratados:")
                     st.dataframe(output_df.head())
 
+                    # Definir as colunas que serão salvas na nova planilha
+                    columns_to_save = []
+
+                    # Verificar se as colunas existem no DataFrame e adicioná-las à lista
+                    if 'Nome_Higienizado' in output_df.columns:
+                        columns_to_save.append('Nome_Higienizado')
+                    elif 'Primeiro_Nome' in output_df.columns:
+                        columns_to_save.append('Primeiro_Nome')
+
+                    if 'Telefone_Tratado' in output_df.columns:
+                        columns_to_save.append('Telefone_Tratado')
+
+                    # Se nenhuma das colunas estiver disponível, use as originais
+                    if not columns_to_save:
+                        columns_to_save = [columns.get('name_column'), columns.get('phone_column')]
+
                     # Download processed data
-                    @st.cache_data
-                    def convert_df(df):
-                        # Convert DataFrame to Excel in memory
-                        from io import BytesIO
-                        output = BytesIO()
-                        writer = pd.ExcelWriter(output, engine='xlsxwriter')
-                        df.to_excel(writer, index=False, sheet_name='Dados Tratados')
-                        writer.close()
-                        processed_data = output.getvalue()
-                        return processed_data
-
-
-                    excel_bytes = convert_df(output_df)
+                    excel_bytes = convert_df(output_df, columns_to_save)
                     st.download_button(
                         label="Baixar arquivo Excel",
                         data=excel_bytes,
@@ -112,10 +117,10 @@ def process_data(df, treatments, columns):
 
 def sanitize_name(name):
     """
-    Remove emojis, a palavra 'tag' e caracteres especiais do nome.
+    Remove emojis, a palavra 'tag', caracteres especiais e acentos do nome.
     Extrai o nome real, mesmo que haja múltiplos '|'.
     :param name: Nome como string.
-    :return: Nome sem emojis, 'tag' ou caracteres especiais.
+    :return: Nome sem emojis, 'tag', caracteres especiais e acentos.
     """
     if pd.isna(name):
         return name
@@ -146,6 +151,9 @@ def sanitize_name(name):
 
     # Remover caracteres especiais, mantendo letras, números e espaços
     name = re.sub(r'[^\w\s]', '', name)
+
+    # Remover acentos
+    name = unicodedata.normalize('NFKD', name).encode('ASCII', 'ignore').decode('ASCII')
 
     # Remover espaços extras entre palavras
     name = ' '.join(name.split())
@@ -211,6 +219,26 @@ def clean_phone_number(phone_number):
     phone_number = add_country_code(phone_number)
     phone_number = add_ninth_digit(phone_number)
     return phone_number
+
+@st.cache_data
+def convert_df(df, columns_to_save):
+    # Convert DataFrame to Excel in memory with multiple sheets
+    from io import BytesIO
+    output = BytesIO()
+    writer = pd.ExcelWriter(output, engine='xlsxwriter')
+
+    # Salvar o DataFrame completo na primeira planilha
+    df.to_excel(writer, index=False, sheet_name='Dados Tratados')
+
+    # Criar um DataFrame com apenas as colunas especificadas
+    df_selected = df[columns_to_save]
+
+    # Salvar o DataFrame selecionado na segunda planilha
+    df_selected.to_excel(writer, index=False, sheet_name='Nome e Telefone')
+
+    writer.close()
+    processed_data = output.getvalue()
+    return processed_data
 
 if __name__ == '__main__':
     main()
